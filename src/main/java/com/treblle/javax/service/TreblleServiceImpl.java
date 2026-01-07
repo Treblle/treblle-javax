@@ -24,6 +24,15 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.treblle.common.utils.HttpUtils.APPLICATION_JSON_VALUE;
 
+/**
+ * Implementation of Treblle telemetry service for JavaX applications.
+ * <p>
+ * This service handles asynchronous transmission of monitoring data to the Treblle API
+ * using Apache HTTP Client 5. It manages HTTP connections, request/response logging in
+ * debug mode, and graceful shutdown of resources.
+ *
+ * @since 1.0.0
+ */
 public class TreblleServiceImpl extends AbstractTreblleService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TreblleServiceImpl.class);
@@ -31,6 +40,13 @@ public class TreblleServiceImpl extends AbstractTreblleService {
     private final CloseableHttpClient httpClient;
     private final ExecutorService executorService;
 
+    /**
+     * Creates a new Treblle service instance.
+     *
+     * @param sdkName the SDK identifier (e.g., "javax-servlet" or "javax-container")
+     * @param treblleProperties configuration properties for the service
+     * @param objectMapper JSON object mapper for serialization
+     */
     public TreblleServiceImpl(String sdkName, TreblleProperties treblleProperties, ObjectMapper objectMapper) {
         super(sdkName, treblleProperties, objectMapper);
 
@@ -44,7 +60,7 @@ public class TreblleServiceImpl extends AbstractTreblleService {
                 .disableAutomaticRetries()
                 .setDefaultRequestConfig(requestConfig);
 
-        if (treblleProperties.isDebug()) {
+        if (treblleProperties.isDebugMode()) {
             builder.addRequestInterceptorFirst(new RequestLogger())
                     .addResponseInterceptorFirst(new ResponseLogger());
         }
@@ -74,7 +90,7 @@ public class TreblleServiceImpl extends AbstractTreblleService {
     protected void sendPayload(TrebllePayload payload) {
         CompletableFuture.runAsync(() -> {
             final HttpPost httpPost = new HttpPost(
-                    Optional.ofNullable(treblleProperties.getEndpoint())
+                    Optional.ofNullable(treblleProperties.getCustomTreblleEndpoint())
                             .orElse(getRandomAPIEndpoint())
             );
             httpPost.setHeader("Content-Type", APPLICATION_JSON_VALUE);
@@ -86,7 +102,7 @@ public class TreblleServiceImpl extends AbstractTreblleService {
 
                 // Use singleton client
                 try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                    if (treblleProperties.isDebug()) {
+                    if (treblleProperties.isDebugMode()) {
                         if (response.getCode() != 200) {
                             LOGGER.error("An error occurred while sending network request to Treblle. Status Code: {}", response.getCode());
                         } else {
@@ -101,8 +117,10 @@ public class TreblleServiceImpl extends AbstractTreblleService {
     }
 
     /**
-     * Shutdown the HTTP client and executor service.
-     * Should be called when the filter is being destroyed.
+     * Shuts down the telemetry service and releases resources.
+     * <p>
+     * This method gracefully stops the executor service and waits for pending
+     * tasks to complete. It should be called when the filter is destroyed.
      */
     public void shutdown() {
         LOGGER.debug("Shutting down Treblle service");

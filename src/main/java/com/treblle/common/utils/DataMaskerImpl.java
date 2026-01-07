@@ -43,7 +43,7 @@ public class DataMaskerImpl implements DataMasker {
   public DataMaskerImpl(TreblleProperties properties) {
     Set<String> keywords = new HashSet<>(9);
     keywords.addAll(DEFAULT_KEYWORDS);
-    keywords.addAll(properties.getMaskingKeywords());
+    keywords.addAll(properties.getMaskedKeywords());
 
     String mergedPattern = keywords.stream()
             .filter(it -> !it.endsWith(".*"))

@@ -3,27 +3,39 @@ package com.treblle.javax.configuration;
 import com.treblle.common.configuration.TreblleProperties;
 
 import javax.ws.rs.core.Configuration;
+import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 
+/**
+ * Implementation of {@link TreblleProperties} that reads configuration from JAX-RS configuration properties.
+ * <p>
+ * This class is used by {@link com.treblle.javax.TreblleContainerFilter} to load configuration
+ * from JAX-RS application properties or ResourceConfig.
+ *
+ * @since 1.0.0
+ */
 public class ContainerFilterTreblleProperties implements TreblleProperties {
 
-    private static final String ENDPOINT = "endpoint";
+    private static final String ENDPOINT = "customTreblleEndpoint";
     private static final String SDK_TOKEN = "sdkToken";
     private static final String API_KEY = "apiKey";
-    private static final String DEBUG = "debug";
-    private static final String URL_PATTERNS = "urlPatterns";
-    private static final String MASKING_KEYWORDS = "maskedKeywords";
+    private static final String DEBUG = "debugMode";
+    private static final String MASKED_KEYWORDS = "maskedKeywords";
     private static final String EXCLUDED_PATHS = "excludedPaths";
 
     private final Configuration filterConfig;
 
+    /**
+     * Creates a new instance that reads configuration from the given JAX-RS configuration.
+     *
+     * @param filterConfig the JAX-RS configuration containing properties
+     */
     public ContainerFilterTreblleProperties(Configuration filterConfig) {
         this.filterConfig = filterConfig;
     }
 
     @Override
-    public String getEndpoint() {
+    public String getCustomTreblleEndpoint() {
         Object value = filterConfig.getProperty(ENDPOINT);
         if (value instanceof String) {
             return (String) value;
@@ -50,7 +62,7 @@ public class ContainerFilterTreblleProperties implements TreblleProperties {
     }
 
     @Override
-    public boolean isDebug() {
+    public boolean isDebugMode() {
         Object value = filterConfig.getProperty(DEBUG);
         if (value instanceof Boolean) {
             return (Boolean) value;
@@ -61,29 +73,15 @@ public class ContainerFilterTreblleProperties implements TreblleProperties {
     }
 
     @Override
-    public List<String> getUrlPatterns() {
-        Object value = filterConfig.getProperty(URL_PATTERNS);
-        if (value instanceof String) {
-            return List.of(((String) value).split(","));
-        }
-        return List.of();
-    }
-
-    @Override
-    public List<String> getMaskingKeywords() {
-        Object value = filterConfig.getProperty(MASKING_KEYWORDS);
+    public List<String> getMaskedKeywords() {
+        Object value = filterConfig.getProperty(MASKED_KEYWORDS);
         if (value instanceof String) {
             return java.util.Arrays.stream(((String) value).split(","))
                     .map(String::trim)
                     .filter(s -> !s.isEmpty())
                     .collect(java.util.stream.Collectors.toList());
         }
-        return List.of();
-    }
-
-    @Override
-    public List<String> getMaskedKeywords() {
-        return getMaskingKeywords();
+        return Collections.emptyList();
     }
 
     @Override
@@ -95,7 +93,7 @@ public class ContainerFilterTreblleProperties implements TreblleProperties {
                     .filter(s -> !s.isEmpty())
                     .collect(java.util.stream.Collectors.toList());
         }
-        return List.of();
+        return Collections.emptyList();
     }
 
 }

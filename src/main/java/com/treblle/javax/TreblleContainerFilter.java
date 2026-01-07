@@ -23,6 +23,27 @@ import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+/**
+ * JAX-RS container filter that monitors HTTP requests and responses and sends telemetry data to Treblle.
+ * <p>
+ * This filter intercepts all JAX-RS HTTP traffic, caches request and response bodies, and asynchronously
+ * sends monitoring data to the Treblle API. It supports path exclusion patterns and configurable
+ * masking of sensitive data.
+ * <p>
+ * <b>Configuration:</b>
+ * Configure this filter by setting properties in your JAX-RS Application or ResourceConfig:
+ * <ul>
+ *   <li>{@code sdkToken} - Your Treblle SDK token (required)</li>
+ *   <li>{@code apiKey} - Your Treblle API key (required)</li>
+ *   <li>{@code customTreblleEndpoint} - Custom endpoint URL (optional)</li>
+ *   <li>{@code debugMode} - Enable debug logging (optional, default: false)</li>
+ *   <li>{@code excludedPaths} - Comma-separated path patterns to exclude (optional)</li>
+ *   <li>{@code maskedKeywords} - Additional fields to mask (optional)</li>
+ * </ul>
+ *
+ * @see TreblleServletFilter
+ * @since 1.0.0
+ */
 public class TreblleContainerFilter implements ContainerRequestFilter, ContainerResponseFilter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TreblleContainerFilter.class);
@@ -41,10 +62,23 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
 
     private volatile TreblleService treblleService;
 
+    /**
+     * Default constructor for JAX-RS framework instantiation.
+     * <p>
+     * Configuration will be loaded lazily from injected {@link Context} fields.
+     */
     public TreblleContainerFilter() {
         // Constructor body is empty - initialization happens lazily
     }
 
+    /**
+     * Constructor for programmatic configuration.
+     * <p>
+     * Use this constructor when registering the filter programmatically
+     * with custom configuration properties.
+     *
+     * @param treblleProperties the configuration properties
+     */
     public TreblleContainerFilter(TreblleProperties treblleProperties) {
         this.treblleService = new TreblleServiceImpl(
                 SDK_NAME,
@@ -103,7 +137,7 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
                     byteArrayOutputStream.write(buffer, 0, bytesRead);
                 } catch (LimitExceededException e) {
                     // Body exceeds limit - stop reading but don't fail request
-                    LOGGER.debug("Request body exceeds {}MB limit, truncating for telemetry",
+                    LOGGER.debug("Request body exceeds {}MB limit, truncating for Treblle",
                             maxSize / (1024 * 1024));
                     break;
                 }
@@ -120,7 +154,7 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
 
         } catch (Exception e) {
             // Log but don't fail the request
-            LOGGER.error("Error reading request body for Treblle telemetry", e);
+            LOGGER.error("Error reading request body for Treblle", e);
             // Set empty body so request continues
             containerRequestContext.setProperty(REQUEST_BODY_PROPERTY, "");
             containerRequestContext.setProperty(START_TIME_PROPERTY, System.currentTimeMillis());
@@ -138,7 +172,7 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
             // Check if request was excluded
             Boolean excluded = (Boolean) containerRequestContext.getProperty(TREBLLE_EXCLUDED_PROPERTY);
             if (Boolean.TRUE.equals(excluded)) {
-                return; // Skip telemetry
+                return; // Skip
             }
 
             int maxSize = getTreblleService().getMaxBodySizeInBytes();
@@ -149,7 +183,7 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
 
             // Null check
             if (originalOutputStream == null) {
-                LOGGER.warn("Response entity stream is null, skipping Treblle telemetry");
+                LOGGER.warn("Response entity stream is null, skipping Treblle");
                 return;
             }
 
@@ -170,7 +204,7 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
             long startTime = startTimeObj != null ? startTimeObj : System.currentTimeMillis();
             long responseTimeInMillis = System.currentTimeMillis() - startTime;
 
-            // Send telemetry asynchronously
+            // Send asynchronously
             TrebllePayload payload = getTreblleService().createPayload(
                     new ContainerRequestContextWrapper(containerRequestContext, resourceInfo),
                     new ContainerResponseContextWrapper(containerResponseContext),
@@ -181,7 +215,7 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
 
         } catch (Exception exception) {
             // NEVER let Treblle errors crash the response
-            LOGGER.error("An error occurred while processing Treblle telemetry", exception);
+            LOGGER.error("An error occurred while processing Treblle", exception);
         }
     }
 

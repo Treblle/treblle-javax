@@ -1,28 +1,65 @@
 package com.treblle.common.configuration;
 
+import java.util.Collections;
 import java.util.List;
 
+/**
+ * Configuration properties for Treblle SDK.
+ * <p>
+ * This interface defines all configuration options for monitoring HTTP requests and responses
+ * with Treblle. Implementations can read these values from various sources such as
+ * servlet filter configuration, JAX-RS configuration, or custom property providers.
+ *
+ * @since 1.0.0
+ */
 public interface TreblleProperties {
 
-    default String getEndpoint() {
+    /**
+     * Returns the custom Treblle API endpoint URL.
+     * <p>
+     * Use this for self-hosted Treblle instances or custom routing.
+     * If not specified, the default Treblle cloud endpoint will be used.
+     *
+     * @return custom endpoint URL, or {@code null} to use default
+     * @since 2.0.0
+     */
+    default String getCustomTreblleEndpoint() {
         return null;
     }
 
+    /**
+     * Returns the Treblle SDK token for authentication.
+     * <p>
+     * This is a required configuration value. Get your SDK token from
+     * the Treblle dashboard at https://app.treblle.com
+     *
+     * @return the SDK token
+     * @since 1.0.0
+     */
     String getSdkToken();
 
+    /**
+     * Returns the Treblle API key for authentication.
+     * <p>
+     * This is a required configuration value. Get your API key from
+     * the Treblle dashboard at https://app.treblle.com
+     *
+     * @return the API key
+     * @since 1.0.0
+     */
     String getApiKey();
 
-    default boolean isDebug() {
-        return false;
-    }
-
     /**
-     * @deprecated Use {@link #getExcludedPaths()} instead. This method will be removed in version 2.0.0.
-     *             Note: This property was never functional in earlier versions.
+     * Returns whether debug mode is enabled.
+     * <p>
+     * When enabled, the SDK logs HTTP request and response details to help
+     * with troubleshooting. This should be disabled in production environments.
+     *
+     * @return {@code true} if debug mode is enabled, {@code false} otherwise
+     * @since 2.0.0
      */
-    @Deprecated
-    default List<String> getUrlPatterns() {
-        return List.of();
+    default boolean isDebugMode() {
+        return false;
     }
 
     /**
@@ -41,15 +78,7 @@ public interface TreblleProperties {
      * @since 1.0.6
      */
     default List<String> getExcludedPaths() {
-        return List.of();
-    }
-
-    /**
-     * @deprecated Use {@code maskedKeywords} configuration property instead. This method name will be updated in 2.0.0.
-     */
-    @Deprecated
-    default List<String> getMaskingKeywords() {
-        return List.of();
+        return Collections.emptyList();
     }
 
     /**
@@ -61,17 +90,45 @@ public interface TreblleProperties {
      * @since 1.0.6
      */
     default List<String> getMaskedKeywords() {
-        return getMaskingKeywords(); // Delegate to deprecated method for backwards compatibility
+        return Collections.emptyList();
     }
 
+    /**
+     * Returns the connection timeout for HTTP requests to Treblle API.
+     * <p>
+     * This timeout controls how long to wait when establishing a connection
+     * to the Treblle API endpoint.
+     *
+     * @return connection timeout in seconds, default is 3 seconds
+     * @since 1.0.0
+     */
     default int getConnectTimeoutInSeconds() {
         return 3;
     }
 
+    /**
+     * Returns the read timeout for HTTP requests to Treblle API.
+     * <p>
+     * This timeout controls how long to wait for data to be received
+     * from the Treblle API endpoint after connection is established.
+     *
+     * @return read timeout in seconds, default is 3 seconds
+     * @since 1.0.0
+     */
     default int getReadTimeoutInSeconds() {
         return 3;
     }
 
+    /**
+     * Returns the maximum body size to capture for telemetry.
+     * <p>
+     * Request and response bodies larger than this size will be truncated
+     * to prevent excessive memory usage. This helps protect against
+     * memory issues when processing large payloads.
+     *
+     * @return maximum body size in bytes, default is 2MB (2097152 bytes)
+     * @since 1.0.0
+     */
     default int getMaxBodySizeInBytes() {
         return 2 * 1024 * 1024;  // 2MB default
     }

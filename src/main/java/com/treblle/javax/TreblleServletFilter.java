@@ -17,6 +17,27 @@ import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.List;
 
+/**
+ * Servlet filter that monitors HTTP requests and responses and sends telemetry data to Treblle.
+ * <p>
+ * This filter intercepts all HTTP traffic, caches request and response bodies, and asynchronously
+ * sends monitoring data to the Treblle API. It supports path exclusion patterns and configurable
+ * masking of sensitive data.
+ * <p>
+ * <b>Configuration:</b>
+ * Configure this filter in web.xml with the following init parameters:
+ * <ul>
+ *   <li>{@code sdkToken} - Your Treblle SDK token (required)</li>
+ *   <li>{@code apiKey} - Your Treblle API key (required)</li>
+ *   <li>{@code customTreblleEndpoint} - Custom endpoint URL (optional)</li>
+ *   <li>{@code debugMode} - Enable debug logging (optional, default: false)</li>
+ *   <li>{@code excludedPaths} - Comma-separated path patterns to exclude (optional)</li>
+ *   <li>{@code maskedKeywords} - Additional fields to mask (optional)</li>
+ * </ul>
+ *
+ * @see TreblleContainerFilter
+ * @since 1.0.0
+ */
 public class TreblleServletFilter implements Filter {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TreblleServletFilter.class);
@@ -91,7 +112,7 @@ public class TreblleServletFilter implements Filter {
                 }
             }
 
-            // Only send telemetry if response was successfully restored
+            // Only send if response was successfully restored
             if (responseRestored) {
                 try {
                     TrebllePayload payload = treblleService.createPayload(
@@ -102,7 +123,7 @@ public class TreblleServletFilter implements Filter {
                     );
                     treblleService.maskAndSendPayload(payload, requestBody, responseBody, potentialException);
                 } catch (Exception telemetryException) {
-                    // Never let telemetry errors crash the request
+                    // Never let errors crash the request
                     LOGGER.error("An error occurred while sending data to Treblle", telemetryException);
                 }
             }

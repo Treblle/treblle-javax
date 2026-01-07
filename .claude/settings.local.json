@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn dependency:tree:*)",
+      "Bash(java -version:*)"
+    ]
+  }
+}
