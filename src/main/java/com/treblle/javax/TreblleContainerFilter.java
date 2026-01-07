@@ -20,7 +20,6 @@ import javax.ws.rs.container.ResourceInfo;
 import javax.ws.rs.core.Configuration;
 import javax.ws.rs.core.Context;
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
@@ -50,9 +49,10 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
 
     private static final String SDK_NAME = "javax-container";
 
-    private static final String REQUEST_BODY_PROPERTY = "requestBody";
-    private static final String START_TIME_PROPERTY = "startTime";
     private static final String TREBLLE_EXCLUDED_PROPERTY = "treblle.excluded";
+
+    // ThreadLocal storage for request context data
+    private static final ThreadLocal<TreblleRequestData> REQUEST_DATA = new ThreadLocal<>();
 
     @Context
     private Configuration configuration;
@@ -61,6 +61,20 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
     private ResourceInfo resourceInfo;
 
     private volatile TreblleService treblleService;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * Container for data collected during request processing
+     */
+    private static class TreblleRequestData {
+        byte[] requestBody;
+        Object responseEntity;
+        long startTime;
+        ContainerRequestContextWrapper requestWrapper;
+        ContainerResponseContextWrapper responseWrapper;
+        boolean excluded;
+    }
 
     /**
      * Default constructor for JAX-RS framework instantiation.
@@ -112,56 +126,63 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
 
     @Override
     public void filter(ContainerRequestContext containerRequestContext) throws IOException {
+        TreblleRequestData data = new TreblleRequestData();
+        REQUEST_DATA.set(data);
+
         try {
+            // Start timing
+            data.startTime = System.currentTimeMillis();
+
             // Check if this path should be excluded from monitoring
             String requestPath = extractRequestPath(containerRequestContext);
             List<String> excludedPaths = getTreblleService().getProperties().getExcludedPaths();
 
             if (PathMatcher.isExcluded(requestPath, excludedPaths)) {
-                // Mark as excluded so response filter can skip it
+                // Mark as excluded
+                data.excluded = true;
                 containerRequestContext.setProperty(TREBLLE_EXCLUDED_PROPERTY, Boolean.TRUE);
                 return; // Skip request body caching
             }
 
-            InputStream inputStream = containerRequestContext.getEntityStream();
+            // Capture request body if present
+            if (containerRequestContext.hasEntity()) {
+                InputStream inputStream = containerRequestContext.getEntityStream();
+                int maxSize = getTreblleService().getMaxBodySizeInBytes();
 
-            // Get max size from configuration
-            int maxSize = getTreblleService().getMaxBodySizeInBytes();
-            LimitedByteArrayOutputStream byteArrayOutputStream =
-                    new LimitedByteArrayOutputStream(maxSize);
+                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                byte[] chunk = new byte[1024];
+                int bytesRead;
+                int totalRead = 0;
 
-            byte[] buffer = new byte[1024];
-            int bytesRead;
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                try {
-                    byteArrayOutputStream.write(buffer, 0, bytesRead);
-                } catch (LimitExceededException e) {
-                    // Body exceeds limit - stop reading but don't fail request
-                    LOGGER.debug("Request body exceeds {}MB limit, truncating for Treblle",
-                            maxSize / (1024 * 1024));
-                    break;
+                while ((bytesRead = inputStream.read(chunk)) != -1) {
+                    if (totalRead + bytesRead > maxSize) {
+                        // Truncate at limit
+                        int remaining = maxSize - totalRead;
+                        if (remaining > 0) {
+                            buffer.write(chunk, 0, remaining);
+                        }
+                        LOGGER.debug("Request body exceeds limit, truncating at {} bytes", maxSize);
+                        break;
+                    }
+                    buffer.write(chunk, 0, bytesRead);
+                    totalRead += bytesRead;
                 }
+
+                data.requestBody = buffer.toByteArray();
+
+                // Reset entity stream for resource method to consume
+                containerRequestContext.setEntityStream(new ByteArrayInputStream(data.requestBody));
+            } else {
+                data.requestBody = new byte[0];
             }
 
-            String requestBody = byteArrayOutputStream.toString(StandardCharsets.UTF_8);
-            containerRequestContext.setProperty(REQUEST_BODY_PROPERTY, requestBody);
-            containerRequestContext.setProperty(START_TIME_PROPERTY, System.currentTimeMillis());
-
-            // Reset entity stream
-            containerRequestContext.setEntityStream(
-                    new ByteArrayInputStream(requestBody.getBytes(StandardCharsets.UTF_8))
-            );
+            // Store request wrapper for later use
+            data.requestWrapper = new ContainerRequestContextWrapper(containerRequestContext, resourceInfo);
 
         } catch (Exception e) {
             // Log but don't fail the request
-            LOGGER.error("Error reading request body for Treblle", e);
-            // Set empty body so request continues
-            containerRequestContext.setProperty(REQUEST_BODY_PROPERTY, "");
-            containerRequestContext.setProperty(START_TIME_PROPERTY, System.currentTimeMillis());
-            // Re-throw IOException so container knows
-            if (e instanceof IOException) {
-                throw (IOException) e;
-            }
+            LOGGER.error("Error in Treblle request filter", e);
+            data.requestBody = new byte[0];
         }
     }
 
@@ -169,54 +190,64 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
     public void filter(ContainerRequestContext containerRequestContext,
                        ContainerResponseContext containerResponseContext) throws IOException {
         try {
-            // Check if request was excluded
-            Boolean excluded = (Boolean) containerRequestContext.getProperty(TREBLLE_EXCLUDED_PROPERTY);
-            if (Boolean.TRUE.equals(excluded)) {
+            TreblleRequestData data = REQUEST_DATA.get();
+            if (data == null || data.excluded) {
+                REQUEST_DATA.remove();
                 return; // Skip
             }
 
-            int maxSize = getTreblleService().getMaxBodySizeInBytes();
-            LimitedByteArrayOutputStream byteArrayOutputStream =
-                    new LimitedByteArrayOutputStream(maxSize);
+            // Capture response entity and wrapper
+            data.responseEntity = containerResponseContext.getEntity();
+            data.responseWrapper = new ContainerResponseContextWrapper(containerResponseContext);
 
-            OutputStream originalOutputStream = containerResponseContext.getEntityStream();
+            // Calculate response time
+            long responseTimeInMillis = System.currentTimeMillis() - data.startTime;
 
-            // Null check
-            if (originalOutputStream == null) {
-                LOGGER.warn("Response entity stream is null, skipping Treblle");
-                return;
+            // Serialize response entity to bytes
+            byte[] responseBody = new byte[0];
+            if (data.responseEntity != null) {
+                try {
+                    String json = objectMapper.writeValueAsString(data.responseEntity);
+                    responseBody = json.getBytes("UTF-8");
+                } catch (Exception e) {
+                    LOGGER.debug("Could not serialize response entity", e);
+                }
             }
 
-            // Wrap with capturing stream
-            CaptureOutputStream captureStream = new CaptureOutputStream(
-                    byteArrayOutputStream,
-                    originalOutputStream
-            );
-            containerResponseContext.setEntityStream(captureStream);
-
-            // Extract cached data
-            byte[] responseBody = byteArrayOutputStream.toByteArray();
-            String requestBodyString = (String) containerRequestContext.getProperty(REQUEST_BODY_PROPERTY);
-            byte[] requestBody = requestBodyString != null ?
-                    requestBodyString.getBytes(StandardCharsets.UTF_8) : new byte[0];
-
-            Long startTimeObj = (Long) containerRequestContext.getProperty(START_TIME_PROPERTY);
-            long startTime = startTimeObj != null ? startTimeObj : System.currentTimeMillis();
-            long responseTimeInMillis = System.currentTimeMillis() - startTime;
-
-            // Send asynchronously
+            // Create payload while still in request scope
             TrebllePayload payload = getTreblleService().createPayload(
-                    new ContainerRequestContextWrapper(containerRequestContext, resourceInfo),
-                    new ContainerResponseContextWrapper(containerResponseContext),
+                    data.requestWrapper,
+                    data.responseWrapper,
                     null,
                     responseTimeInMillis
             );
-            getTreblleService().maskAndSendPayload(payload, requestBody, responseBody, null);
+
+            // Send asynchronously (payload already contains all extracted data)
+            sendToTreblle(payload, data.requestBody, responseBody);
 
         } catch (Exception exception) {
             // NEVER let Treblle errors crash the response
-            LOGGER.error("An error occurred while processing Treblle", exception);
+            LOGGER.error("Error in Treblle response filter", exception);
+        } finally {
+            // Always clean up ThreadLocal
+            REQUEST_DATA.remove();
         }
+    }
+
+    private void sendToTreblle(final TrebllePayload payload, final byte[] requestBody, final byte[] responseBody) {
+        // Send asynchronously to avoid blocking the response
+        new Thread(() -> {
+            try {
+                getTreblleService().maskAndSendPayload(
+                        payload,
+                        requestBody != null ? requestBody : new byte[0],
+                        responseBody,
+                        null
+                );
+            } catch (Exception e) {
+                LOGGER.error("Error sending data to Treblle", e);
+            }
+        }, "treblle-async").start();
     }
 
     /**
@@ -225,100 +256,6 @@ public class TreblleContainerFilter implements ContainerRequestFilter, Container
     public void destroy() {
         if (treblleService instanceof TreblleServiceImpl) {
             ((TreblleServiceImpl) treblleService).shutdown();
-        }
-    }
-
-    /**
-     * Limited ByteArrayOutputStream that throws exception when size limit exceeded
-     */
-    private static class LimitedByteArrayOutputStream extends ByteArrayOutputStream {
-        private final int maxSize;
-
-        public LimitedByteArrayOutputStream(int maxSize) {
-            super(Math.min(maxSize, 1024));
-            this.maxSize = maxSize;
-        }
-
-        @Override
-        public synchronized void write(byte[] b, int off, int len) {
-            if (count + len > maxSize) {
-                throw new LimitExceededException("Body size exceeds " + maxSize + " bytes");
-            }
-            super.write(b, off, len);
-        }
-
-        @Override
-        public synchronized void write(int b) {
-            if (count >= maxSize) {
-                throw new LimitExceededException("Body size exceeds " + maxSize + " bytes");
-            }
-            super.write(b);
-        }
-    }
-
-    /**
-     * Exception thrown when body size limit is exceeded
-     */
-    private static class LimitExceededException extends RuntimeException {
-        public LimitExceededException(String message) {
-            super(message);
-        }
-    }
-
-    /**
-     * Improved CaptureOutputStream with size limiting
-     */
-    private static class CaptureOutputStream extends OutputStream {
-        private final LimitedByteArrayOutputStream captureBuffer;
-        private final OutputStream originalOutputStream;
-        private boolean limitExceeded = false;
-
-        public CaptureOutputStream(LimitedByteArrayOutputStream captureBuffer,
-                                   OutputStream originalOutputStream) {
-            this.captureBuffer = captureBuffer;
-            this.originalOutputStream = originalOutputStream;
-        }
-
-        @Override
-        public void write(int b) throws IOException {
-            // Always write to original
-            originalOutputStream.write(b);
-
-            // Try to capture if not exceeded
-            if (!limitExceeded) {
-                try {
-                    captureBuffer.write(b);
-                } catch (LimitExceededException e) {
-                    limitExceeded = true;
-                    // Continue without capturing
-                }
-            }
-        }
-
-        @Override
-        public void write(byte[] b, int off, int len) throws IOException {
-            // Always write to original
-            originalOutputStream.write(b, off, len);
-
-            // Try to capture if not exceeded
-            if (!limitExceeded) {
-                try {
-                    captureBuffer.write(b, off, len);
-                } catch (LimitExceededException e) {
-                    limitExceeded = true;
-                    // Continue without capturing
-                }
-            }
-        }
-
-        @Override
-        public void flush() throws IOException {
-            originalOutputStream.flush();
-        }
-
-        @Override
-        public void close() throws IOException {
-            originalOutputStream.close();
         }
     }
 

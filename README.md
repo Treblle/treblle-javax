@@ -38,7 +38,7 @@ Add the dependency to your `pom.xml`:
 <dependency>
     <groupId>com.treblle</groupId>
     <artifactId>treblle-javax</artifactId>
-    <version>2.0.1</version>
+    <version>2.0.2</version>
 </dependency>
 ```
 
@@ -47,7 +47,7 @@ Add the dependency to your `pom.xml`:
 Add the dependency to your `build.gradle`:
 
 ```gradle
-implementation 'com.treblle:treblle-javax:2.0.1'
+implementation 'com.treblle:treblle-javax:2.0.2'
 ```
 
 ### Gradle (Kotlin DSL)
@@ -55,7 +55,7 @@ implementation 'com.treblle:treblle-javax:2.0.1'
 Add the dependency to your `build.gradle.kts`:
 
 ```kotlin
-implementation("com.treblle:treblle-javax:2.0.1")
+implementation("com.treblle:treblle-javax:2.0.2")
 ```
 
 ---
