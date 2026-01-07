@@ -10,10 +10,14 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
 import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
 import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager;
 import org.apache.hc.core5.http.*;
-import org.apache.hc.core5.http.io.entity.StringEntity;
+import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
 import org.apache.hc.core5.http.protocol.HttpContext;
 import org.apache.hc.core5.util.Timeout;
+
+import java.io.ByteArrayOutputStream;
+import java.util.zip.GZIPOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,13 +54,19 @@ public class TreblleServiceImpl extends AbstractTreblleService {
     public TreblleServiceImpl(String sdkName, TreblleProperties treblleProperties, ObjectMapper objectMapper) {
         super(sdkName, treblleProperties, objectMapper);
 
-        // Create singleton HTTP client
+        // Create connection pool for better performance
+        PoolingHttpClientConnectionManager connectionManager = new PoolingHttpClientConnectionManager();
+        connectionManager.setMaxTotal(10);  // Max total connections
+        connectionManager.setDefaultMaxPerRoute(5);  // Max connections per route
+
+        // Create singleton HTTP client with optimizations
         RequestConfig requestConfig = RequestConfig.custom()
                 .setConnectTimeout(Timeout.ofSeconds(treblleProperties.getConnectTimeoutInSeconds()))
                 .setResponseTimeout(Timeout.ofSeconds(treblleProperties.getReadTimeoutInSeconds()))
                 .build();
 
         HttpClientBuilder builder = HttpClients.custom()
+                .setConnectionManager(connectionManager)
                 .disableAutomaticRetries()
                 .setDefaultRequestConfig(requestConfig);
 
@@ -95,10 +105,29 @@ public class TreblleServiceImpl extends AbstractTreblleService {
             );
             httpPost.setHeader("Content-Type", APPLICATION_JSON_VALUE);
             httpPost.setHeader(TREBLLE_API_KEY_HEADER, treblleProperties.getSdkToken());
+            httpPost.setHeader("Content-Encoding", "gzip");
+            httpPost.setHeader("Accept-Encoding", "gzip, deflate");
 
             try {
-                StringEntity entity = new StringEntity(objectMapper.writeValueAsString(payload));
+                // Serialize to JSON
+                String jsonPayload = objectMapper.writeValueAsString(payload);
+
+                // Compress with GZIP
+                ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
+                try (GZIPOutputStream gzipStream = new GZIPOutputStream(byteStream)) {
+                    gzipStream.write(jsonPayload.getBytes("UTF-8"));
+                }
+                byte[] compressedData = byteStream.toByteArray();
+
+                // Create entity with compressed data
+                ByteArrayEntity entity = new ByteArrayEntity(compressedData, ContentType.APPLICATION_JSON);
                 httpPost.setEntity(entity);
+
+                if (treblleProperties.isDebugMode()) {
+                    LOGGER.debug("Payload size - Original: {} bytes, Compressed: {} bytes, Ratio: {}%",
+                            jsonPayload.length(), compressedData.length,
+                            (100 - (compressedData.length * 100 / jsonPayload.length())));
+                }
 
                 // Use singleton client
                 try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
