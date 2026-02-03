@@ -22,6 +22,9 @@ public class ContainerFilterTreblleProperties implements TreblleProperties {
     private static final String DEBUG = "debugMode";
     private static final String MASKED_KEYWORDS = "maskedKeywords";
     private static final String EXCLUDED_PATHS = "excludedPaths";
+    private static final String THREAD_POOL_CORE_SIZE = "threadPoolCoreSize";
+    private static final String THREAD_POOL_MAX_SIZE = "threadPoolMaxSize";
+    private static final String THREAD_POOL_QUEUE_SIZE = "threadPoolQueueSize";
 
     private final Configuration filterConfig;
 
@@ -94,6 +97,42 @@ public class ContainerFilterTreblleProperties implements TreblleProperties {
                     .collect(java.util.stream.Collectors.toList());
         }
         return Collections.emptyList();
+    }
+
+    @Override
+    public int getThreadPoolCoreSize() {
+        Object value = filterConfig.getProperty(THREAD_POOL_CORE_SIZE);
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+        if (value instanceof String) {
+            return Integer.parseInt((String) value);
+        }
+        return 1;
+    }
+
+    @Override
+    public int getThreadPoolMaxSize() {
+        Object value = filterConfig.getProperty(THREAD_POOL_MAX_SIZE);
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+        if (value instanceof String) {
+            return Integer.parseInt((String) value);
+        }
+        return 3;
+    }
+
+    @Override
+    public int getThreadPoolQueueSize() {
+        Object value = filterConfig.getProperty(THREAD_POOL_QUEUE_SIZE);
+        if (value instanceof Integer) {
+            return (Integer) value;
+        }
+        if (value instanceof String) {
+            return Integer.parseInt((String) value);
+        }
+        return 100;
     }
 
 }

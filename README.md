@@ -38,7 +38,7 @@ Add the dependency to your `pom.xml`:
 <dependency>
     <groupId>com.treblle</groupId>
     <artifactId>treblle-javax</artifactId>
-    <version>2.0.2</version>
+    <version>2.0.3</version>
 </dependency>
 ```
 
@@ -47,7 +47,7 @@ Add the dependency to your `pom.xml`:
 Add the dependency to your `build.gradle`:
 
 ```gradle
-implementation 'com.treblle:treblle-javax:2.0.2'
+implementation 'com.treblle:treblle-javax:2.0.3'
 ```
 
 ### Gradle (Kotlin DSL)
@@ -55,7 +55,7 @@ implementation 'com.treblle:treblle-javax:2.0.2'
 Add the dependency to your `build.gradle.kts`:
 
 ```kotlin
-implementation("com.treblle:treblle-javax:2.0.2")
+implementation("com.treblle:treblle-javax:2.0.3")
 ```
 
 ---
@@ -232,6 +232,9 @@ public class MyResourceConfig extends ResourceConfig {
 | `connectTimeoutInSeconds` | Integer | `3` | HTTP connect timeout for Treblle API |
 | `readTimeoutInSeconds` | Integer | `3` | HTTP read timeout for Treblle API |
 | `maxBodySizeInBytes` | Integer | `2097152` | Max request/response body size for telemetry (2MB) |
+| `threadPoolCoreSize` | Integer | `1` | Minimum worker threads for async telemetry |
+| `threadPoolMaxSize` | Integer | `3` | Maximum worker threads for async telemetry |
+| `threadPoolQueueSize` | Integer | `100` | Max queued tasks before CallerRunsPolicy kicks in |
 
 ### Parameter Examples
 
@@ -271,6 +274,25 @@ Reduce memory usage for high-traffic APIs:
 <init-param>
     <param-name>maxBodySizeInBytes</param-name>
     <param-value>1048576</param-value> <!-- 1MB -->
+</init-param>
+```
+
+#### Thread Pool Tuning
+
+Increase thread pool size for high-throughput environments:
+
+```xml
+<init-param>
+    <param-name>threadPoolCoreSize</param-name>
+    <param-value>2</param-value>
+</init-param>
+<init-param>
+    <param-name>threadPoolMaxSize</param-name>
+    <param-value>5</param-value>
+</init-param>
+<init-param>
+    <param-name>threadPoolQueueSize</param-name>
+    <param-value>200</param-value>
 </init-param>
 ```
 

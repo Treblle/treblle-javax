@@ -21,6 +21,9 @@ public class ServletFilterTreblleProperties implements TreblleProperties {
     private static final String DEBUG = "debugMode";
     private static final String MASKED_KEYWORDS = "maskedKeywords";
     private static final String EXCLUDED_PATHS = "excludedPaths";
+    private static final String THREAD_POOL_CORE_SIZE = "threadPoolCoreSize";
+    private static final String THREAD_POOL_MAX_SIZE = "threadPoolMaxSize";
+    private static final String THREAD_POOL_QUEUE_SIZE = "threadPoolQueueSize";
 
     private final FilterConfig filterConfig;
 
@@ -73,6 +76,27 @@ public class ServletFilterTreblleProperties implements TreblleProperties {
                         .filter(s -> !s.isEmpty())
                         .collect(java.util.stream.Collectors.toList()))
                 .orElse(Collections.emptyList());
+    }
+
+    @Override
+    public int getThreadPoolCoreSize() {
+        return Optional.ofNullable(filterConfig.getInitParameter(THREAD_POOL_CORE_SIZE))
+                .map(Integer::parseInt)
+                .orElse(1);
+    }
+
+    @Override
+    public int getThreadPoolMaxSize() {
+        return Optional.ofNullable(filterConfig.getInitParameter(THREAD_POOL_MAX_SIZE))
+                .map(Integer::parseInt)
+                .orElse(3);
+    }
+
+    @Override
+    public int getThreadPoolQueueSize() {
+        return Optional.ofNullable(filterConfig.getInitParameter(THREAD_POOL_QUEUE_SIZE))
+                .map(Integer::parseInt)
+                .orElse(100);
     }
 
 }

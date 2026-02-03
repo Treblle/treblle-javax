@@ -17,6 +17,7 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper im
     private final ByteArrayOutputStream content;
     private final int contentCacheLimit;
     private boolean limitExceeded = false;
+    private boolean dataWrittenToOriginal = false;
     private ServletOutputStream outputStream;
     private PrintWriter writer;
     private Integer contentLength;
@@ -81,6 +82,7 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper im
 
     public void setContentType(String type) {
         this.contentType = type;
+        super.setContentType(type);  // Delegate immediately
     }
 
     public String getContentType() {
@@ -100,8 +102,10 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper im
     public void setHeader(String name, String value) {
         if ("Content-Length".equalsIgnoreCase(name)) {
             this.contentLength = Integer.valueOf(value);
+            super.setHeader(name, value);  // Delegate immediately
         } else if ("Content-Type".equalsIgnoreCase(name)) {
             this.contentType = value;
+            super.setHeader(name, value);  // Delegate immediately
         } else {
             super.setHeader(name, value);
         }
@@ -111,8 +115,10 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper im
     public void addHeader(String name, String value) {
         if ("Content-Length".equalsIgnoreCase(name)) {
             this.contentLength = Integer.valueOf(value);
+            super.addHeader(name, value);  // Delegate immediately
         } else if ("Content-Type".equalsIgnoreCase(name)) {
             this.contentType = value;
+            super.addHeader(name, value);  // Delegate immediately
         } else {
             super.addHeader(name, value);
         }
@@ -122,6 +128,7 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper im
     public void setIntHeader(String name, int value) {
         if ("Content-Length".equalsIgnoreCase(name)) {
             this.contentLength = value;
+            super.setIntHeader(name, value);  // Delegate immediately
         } else {
             super.setIntHeader(name, value);
         }
@@ -131,6 +138,7 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper im
     public void addIntHeader(String name, int value) {
         if ("Content-Length".equalsIgnoreCase(name)) {
             this.contentLength = value;
+            super.addIntHeader(name, value);  // Delegate immediately
         } else {
             super.addIntHeader(name, value);
         }
@@ -212,7 +220,10 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper im
                 }
             }
 
-            this.content.writeTo(rawResponse.getOutputStream());
+            // Only write to response if data wasn't already written via ResponseServletOutputStream
+            if (!this.dataWrittenToOriginal) {
+                this.content.writeTo(rawResponse.getOutputStream());
+            }
             this.content.reset();
             if (complete) {
                 super.flushBuffer();
@@ -231,6 +242,7 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper im
 
         public void write(int b) throws IOException {
             os.write(b);  // Always write to original
+            dataWrittenToOriginal = true;
 
             if (!limitExceeded && content.size() < contentCacheLimit) {
                 ContentCachingResponseWrapper.this.content.write(b);
@@ -241,6 +253,7 @@ public class ContentCachingResponseWrapper extends HttpServletResponseWrapper im
 
         public void write(byte[] b, int off, int len) throws IOException {
             os.write(b, off, len);  // Always write to original
+            dataWrittenToOriginal = true;
 
             if (!limitExceeded) {
                 int availableSpace = contentCacheLimit - content.size();

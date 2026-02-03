@@ -77,12 +77,12 @@ public class TreblleServiceImpl extends AbstractTreblleService {
 
         this.httpClient = builder.build();
 
-        // Create bounded thread pool for async tasks
+        // Create bounded thread pool for async tasks with configurable sizes
         this.executorService = new ThreadPoolExecutor(
-                1,  // core pool size
-                3,  // max pool size
+                treblleProperties.getThreadPoolCoreSize(),
+                treblleProperties.getThreadPoolMaxSize(),
                 60L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(100),  // bounded queue
+                new LinkedBlockingQueue<>(treblleProperties.getThreadPoolQueueSize()),
                 new ThreadFactory() {
                     private final AtomicInteger threadNumber = new AtomicInteger(1);
                     @Override
@@ -129,14 +129,16 @@ public class TreblleServiceImpl extends AbstractTreblleService {
                             (100 - (compressedData.length * 100 / jsonPayload.length())));
                 }
 
-                // Use singleton client
-                try (CloseableHttpResponse response = httpClient.execute(httpPost)) {
-                    if (treblleProperties.isDebugMode()) {
-                        if (response.getCode() != 200) {
-                            LOGGER.error("An error occurred while sending network request to Treblle. Status Code: {}", response.getCode());
-                        } else {
-                            LOGGER.debug("Treblle API response: {}", response.getCode());
-                        }
+                // Fire-and-forget: execute and immediately close without waiting for response body
+                CloseableHttpResponse response = httpClient.execute(httpPost);
+                int statusCode = response.getCode();
+                response.close();  // Close immediately, don't read body
+
+                if (treblleProperties.isDebugMode()) {
+                    if (statusCode != 200) {
+                        LOGGER.error("Treblle API returned status code: {}", statusCode);
+                    } else {
+                        LOGGER.debug("Treblle API response: {}", statusCode);
                     }
                 }
             } catch (IOException exception) {

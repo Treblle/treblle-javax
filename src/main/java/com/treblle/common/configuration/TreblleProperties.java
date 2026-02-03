@@ -133,4 +133,44 @@ public interface TreblleProperties {
         return 2 * 1024 * 1024;  // 2MB default
     }
 
+    /**
+     * Returns the core pool size for the async telemetry thread pool.
+     * <p>
+     * This is the minimum number of worker threads kept alive in the pool,
+     * even when idle. Increase for high-throughput environments.
+     *
+     * @return core pool size, default is 1
+     * @since 2.0.3
+     */
+    default int getThreadPoolCoreSize() {
+        return 1;
+    }
+
+    /**
+     * Returns the maximum pool size for the async telemetry thread pool.
+     * <p>
+     * This is the maximum number of worker threads allowed in the pool.
+     * When the queue is full, new threads are created up to this limit.
+     *
+     * @return maximum pool size, default is 3
+     * @since 2.0.3
+     */
+    default int getThreadPoolMaxSize() {
+        return 3;
+    }
+
+    /**
+     * Returns the queue size for the async telemetry thread pool.
+     * <p>
+     * This is the maximum number of tasks that can be queued for execution.
+     * When both the queue and max threads are saturated, the CallerRunsPolicy
+     * kicks in and the calling thread executes the task.
+     *
+     * @return queue size, default is 100
+     * @since 2.0.3
+     */
+    default int getThreadPoolQueueSize() {
+        return 100;
+    }
+
 }
